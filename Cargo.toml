@@ -5,7 +5,7 @@ edition = "2021"
 default-run = "yolov8_detection"
 
 [dependencies]
-burn = { version = "0.19", features = ["ndarray"] }
+burn = { version = "0.19", features = ["ndarray", "autodiff"] }
 ndarray = "0.16"
 ndarray-rand = "0.15"
 ndarray-stats = "0.5"

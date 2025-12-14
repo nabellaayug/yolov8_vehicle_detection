@@ -1,6 +1,7 @@
-use burn::backend::NdArray;
+use burn::backend::{Autodiff, NdArray};
 use burn::prelude::*;
 use burn::tensor::Distribution;
+use burn::tensor::backend::AutodiffBackend;
 
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -14,17 +15,13 @@ use yolov8_detection::training::{
 };
 
 use yolov8_detection::dataset::{
-    RoadVehicleDataset,
     DatasetConfig,
 };
 
 use yolov8_detection::gui::run_gui;
 use yolov8_detection::YOLOLoss;
 
-// ======================================================
-// 🔧 Backend aliases (PENTING)
-// ======================================================
-type BackendType = NdArray;
+type BackendType = Autodiff<NdArray>;
 type DeviceType = <BackendType as Backend>::Device;
 type TrainerType = Trainer<BackendType>;
 
@@ -34,57 +31,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     println!("🚀 YOLOv8 Nano Training (Burn + egui)");
-    println!("====================================\n");
+    println!("=====================================\n");
 
-    // --------------------------------------------------
-    // Dataset
-    // --------------------------------------------------
-    let mut dataset = RoadVehicleDataset::new(DatasetConfig {
-        data_path: "./data/processed".to_string(),
-        image_size: 640,
-        batch_size: 8,
-        train_split: 0.7,
-        val_split: 0.15,
-        test_split: 0.15,
-    });
+    let num_epochs = 5;
+    let num_batches = 10;
+    let batch_size = 8;
+    let num_classes = 1;
+    let image_size = 416; // ✅ YOLOv8 Nano standard input
 
-    println!("📂 Loading dataset...");
-    if let Err(e) = dataset.load_from_folder("data/raw") {
-        eprintln!("⚠️ Dataset load failed: {e}");
-        println!("⚠️ Using dummy data\n");
-    } else {
-        println!("✅ Dataset loaded\n");
-    }
+    println!("📊 Training Config:");
+    println!("  Num epochs: {}", num_epochs);
+    println!("  Batches per epoch: {}", num_batches);
+    println!("  Batch size: {}", batch_size);
+    println!("  Image size: {}x{}", image_size, image_size);
+    println!("  Num classes:  {}\n", num_classes);
 
-    let train_images = dataset.get_train_images();
-    let val_images = dataset.get_val_images();
-    let test_images = dataset.get_test_images();
-    let num_classes = dataset.num_classes();
-
-    // --------------------------------------------------
-    // Shared training state (GUI <-> training)
-    // --------------------------------------------------
     let training_state = Arc::new(Mutex::new(TrainingState::new()));
+    training_state.lock().unwrap().start();
     let training_state_clone = Arc::clone(&training_state);
 
-    // --------------------------------------------------
-    // Spawn training thread
-    // --------------------------------------------------
     let training_thread = thread::spawn(move || {
         if let Err(e) = run_training(
             training_state_clone,
-            train_images,
-            val_images,
-            test_images,
+            num_epochs,
+            num_batches,
+            batch_size,
             num_classes,
+            image_size,
         ) {
             eprintln!("❌ Training error: {e}");
         }
     });
 
-    // --------------------------------------------------
-    // Run GUI (MAIN THREAD)
-    // --------------------------------------------------
     println!("📊 Starting GUI...\n");
     run_gui(training_state)?;
 
@@ -92,197 +70,159 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// ======================================================
-// 🧠 Training loop
-// ======================================================
 fn run_training(
     training_state: Arc<Mutex<TrainingState>>,
-    train_images: Vec<String>,
-    val_images: Vec<String>,
-    _test_images: Vec<String>,
+    num_epochs: usize,
+    num_batches: usize,
+    batch_size: usize,
     num_classes: usize,
+    image_size: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
 
-    // --------------------------------------------------
-    // Device (CPU – NdArray)
-    // --------------------------------------------------
     let device: DeviceType = DeviceType::default();
 
-    // --------------------------------------------------
-    // Training config
-    // --------------------------------------------------
     let config = TrainingConfig {
-        num_epochs: 10,
-        batch_size: 8,
+        num_epochs,
+        batch_size,
         learning_rate: 1e-3,
-        img_size: 640,
         num_classes,
     };
 
-    println!("📊 Training Config:");
-    println!("  Epochs       : {}", config.num_epochs);
-    println!("  Batch Size   : {}", config.batch_size);
-    println!("  LearningRate : {}", config.learning_rate);
-    println!("  Image Size   : {}", config.img_size);
-    println!("  Num Classes  : {}\n", config.num_classes);
+    let mut trainer: TrainerType = Trainer::new(&device, config);
 
-    // --------------------------------------------------
-    // ✅ FIX UTAMA: Trainer type eksplisit
-    // --------------------------------------------------
-    let mut trainer: TrainerType =
-        Trainer::new(&device, config);
-
-    println!(
-        "{:<8} {:<14} {:<14} {:<10}",
-        "Epoch", "Train Loss", "Val Loss", "Progress"
-    );
+    println!("{:<8} {:<14} {:<14} {:<10}", "Epoch", "Train Loss", "Val Loss", "Progress");
     println!("{}", "=".repeat(55));
 
-    // --------------------------------------------------
-    // Epoch loop
-    // --------------------------------------------------
-    for epoch in 0..trainer.config.num_epochs {
-
-        // Stop training
-        {
-            let state = training_state.lock().unwrap();
-            if !state.is_running.load(std::sync::atomic::Ordering::SeqCst) {
-                println!("⏹ Training stopped");
-                break;
-            }
+    for epoch in 0..num_epochs {
+        log::info!("🔄 EPOCH {} START", epoch + 1);
+        
+        if !training_state.lock().unwrap().is_running.load(std::sync::atomic::Ordering::SeqCst) {
+            log::warn!("⏹ Training stopped");
+            break;
         }
 
-        // Pause training
-        while training_state
-            .lock()
-            .unwrap()
-            .is_paused
-            .load(std::sync::atomic::Ordering::SeqCst)
-        {
-            thread::sleep(Duration::from_millis(100));
+        while training_state.lock().unwrap().is_paused.load(std::sync::atomic::Ordering::SeqCst) {
+            log::info!("⏸ Training paused, waiting...");
+            thread::sleep(Duration::from_millis(500));
         }
 
-        let batch_size = trainer.config.batch_size;
-        let num_batches = (train_images.len() / batch_size).max(1);
         let mut train_loss = 0.0;
 
-        // --------------------------------------------------
-        // Batch loop
-        // --------------------------------------------------
-        for batch_idx in 0..num_batches {
-            let (images, t2, t3, t4) =
-                load_batch::<BackendType>(&device, batch_size)?;
+        log::info!("📦 Training {} batches...", num_batches);
 
+        for batch_idx in 0..num_batches {
+            log::info!("  Batch {}/{} - Generating dummy data...", batch_idx + 1, num_batches);
+            
+            // ✅ Generate images
+            let images = Tensor::random([batch_size, 3, image_size, image_size], Distribution::Uniform(0.0, 1.0), &device);
+            
+            // ✅ Get actual prediction shapes from forward pass
+            let (p2, p3, p4) = trainer.model.forward(images.clone());
+            log::info!("    Actual pred shapes: p2={:?}, p3={:?}, p4={:?}", 
+                p2.dims(), p3.dims(), p4.dims());
+            
+            // ✅ Generate targets matching actual prediction output shapes
+            let t2 = Tensor::random(p2.dims(), Distribution::Uniform(0.0, 1.0), &device);
+            let t3 = Tensor::random(p3.dims(), Distribution::Uniform(0.0, 1.0), &device);
+            let t4 = Tensor::random(p4.dims(), Distribution::Uniform(0.0, 1.0), &device);
+
+            log::info!("  Batch {}/{} - Forward & backward...", batch_idx + 1, num_batches);
             let loss = trainer.train_step(images, t2, t3, t4);
+            log::info!("    Loss: {:.6}", loss);
+            
             train_loss += loss;
 
-            training_state.lock().unwrap().update_metrics(
-                TrainingMetrics {
-                    epoch: epoch as u32 + 1,
-                    total_epochs: trainer.config.num_epochs as u32,
-                    train_loss: train_loss / (batch_idx + 1) as f32,
-                    val_loss: 0.0,
-                    learning_rate: trainer.config.learning_rate,
-                    batch_processed: (batch_idx + 1) as u32,
-                    total_batches: num_batches as u32,
-                }
-            );
+            training_state.lock().unwrap().update_batch_metrics(TrainingMetrics {
+                epoch: epoch as u32 + 1,
+                total_epochs: num_epochs as u32,
+                train_loss: train_loss / (batch_idx + 1) as f32,
+                val_loss: 0.0,
+                learning_rate: trainer.config.learning_rate,
+                batch_processed: (batch_idx + 1) as u32,
+                total_batches: num_batches as u32,
+            });
 
-            thread::sleep(Duration::from_millis(30));
+            // ✅ SHORT SLEEP - batch processing is fast with dummy data
+            thread::sleep(Duration::from_millis(200));
         }
 
         train_loss /= num_batches as f32;
+        log::info!("✅ Epoch {} train loss: {:.6}", epoch + 1, train_loss);
 
-        // --------------------------------------------------
-        // Validation
-        // --------------------------------------------------
-        let val_loss = run_validation::<BackendType>(
+        log::info!("🔍 Running validation...");
+        let val_loss = run_dummy_validation::<BackendType>(
             &device,
             &trainer,
-            &val_images,
             batch_size,
         );
+        log::info!("✅ Epoch {} val loss: {:.6}", epoch + 1, val_loss);
 
-        training_state.lock().unwrap().update_metrics(
-            TrainingMetrics {
-                epoch: epoch as u32 + 1,
-                total_epochs: trainer.config.num_epochs as u32,
-                train_loss,
-                val_loss,
-                learning_rate: trainer.config.learning_rate,
-                batch_processed: num_batches as u32,
-                total_batches: num_batches as u32,
-            }
-        );
+        log::info!("💾 Pushing epoch metrics to history...");
+        training_state.lock().unwrap().push_epoch_metrics(TrainingMetrics {
+            epoch: epoch as u32 + 1,
+            total_epochs: num_epochs as u32,
+            train_loss,
+            val_loss,
+            learning_rate: trainer.config.learning_rate,
+            batch_processed: num_batches as u32,
+            total_batches: num_batches as u32,
+        });
 
         println!(
             "{:<8} {:<14.6} {:<14.6} {:>6.1}%",
-            format!("{}/{}", epoch + 1, trainer.config.num_epochs),
+            format!("{}/{}", epoch + 1, num_epochs),
             train_loss,
             val_loss,
-            (epoch + 1) as f32 / trainer.config.num_epochs as f32 * 100.0
+            (epoch + 1) as f32 / num_epochs as f32 * 100.0
         );
     }
 
-    println!("\n✨ Training finished");
+    log::info!("🏁 Training completed!");
     Ok(())
 }
 
-// ======================================================
-// 📦 Dummy batch loader
-// ======================================================
-fn load_batch<B: Backend>(
+fn generate_dummy_batch<B: AutodiffBackend>(
     device: &B::Device,
     batch_size: usize,
-) -> Result<
-    (Tensor<B, 4>, Tensor<B, 4>, Tensor<B, 4>, Tensor<B, 4>),
-    Box<dyn std::error::Error>,
-> {
+    image_size: usize,
+) -> Result<(Tensor<B, 4>, Tensor<B, 4>, Tensor<B, 4>, Tensor<B, 4>), Box<dyn std::error::Error>> {
+    let images = Tensor::random([batch_size, 3, image_size, image_size], Distribution::Uniform(0.0, 1.0), device);
+    let (t2, t3, t4) = generate_target_tensors::<B>(device, batch_size)?;
+    Ok((images, t2, t3, t4))
+}
+
+fn generate_target_tensors<B: AutodiffBackend>(
+    device: &B::Device,
+    batch_size: usize,
+) -> Result<(Tensor<B, 4>, Tensor<B, 4>, Tensor<B, 4>), Box<dyn std::error::Error>> {
+    // ✅ Match prediction output shapes!
+    // num_anchors * (5 + num_classes) = 3 * (5 + 1) = 18... tapi simplified ke 5 (x,y,w,h,conf)
+    let pred_channels = 5;  // or 18 if using full anchor format
+    
     Ok((
-        Tensor::random(
-            [batch_size, 3, 640, 640],
-            Distribution::Uniform(0.0, 1.0),
-            device,
-        ),
-        Tensor::random(
-            [batch_size, 255, 160, 160],
-            Distribution::Uniform(0.0, 1.0),
-            device,
-        ),
-        Tensor::random(
-            [batch_size, 255, 80, 80],
-            Distribution::Uniform(0.0, 1.0),
-            device,
-        ),
-        Tensor::random(
-            [batch_size, 255, 40, 40],
-            Distribution::Uniform(0.0, 1.0),
-            device,
-        ),
+        Tensor::random([batch_size, pred_channels, 80, 80], Distribution::Uniform(0.0, 1.0), device),
+        Tensor::random([batch_size, pred_channels, 40, 40], Distribution::Uniform(0.0, 1.0), device),
+        Tensor::random([batch_size, pred_channels, 20, 20], Distribution::Uniform(0.0, 1.0), device),
     ))
 }
 
-// ======================================================
-// 📊 Validation loop
-// ======================================================
-fn run_validation<B: Backend>(
+fn run_dummy_validation<B: AutodiffBackend>(
     device: &B::Device,
     trainer: &Trainer<B>,
-    val_images: &[String],
     batch_size: usize,
 ) -> f32 {
-    let num_batches = (val_images.len() / batch_size).max(1);
+    let num_val_batches = 3;
     let mut total_loss = 0.0;
 
-    for _ in 0..num_batches {
-        if let Ok((images, t2, t3, t4)) =
-            load_batch::<B>(device, batch_size)
-        {
+    for batch_idx in 0..num_val_batches {
+        log::debug!("  Val batch {}/{}", batch_idx + 1, num_val_batches);
+        
+        if let Ok((images, t2, t3, t4)) = generate_dummy_batch::<B>(device, batch_size, 416) {
             let (p2, p3, p4) = trainer.model.forward(images);
             let loss = YOLOLoss::compute(p2, p3, p4, t2, t3, t4);
             total_loss += loss.into_scalar().to_f32();
         }
     }
 
-    total_loss / num_batches as f32
+    total_loss / num_val_batches as f32
 }

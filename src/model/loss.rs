@@ -11,82 +11,57 @@ impl YOLOLoss {
         target_p3: Tensor<B, 4>,
         target_p4: Tensor<B, 4>,
     ) -> Tensor<B, 1> {
+        log::info!("YOLOLoss compute:");
+        log::info!("  pred_p2: {:?}, target_p2: {:?}", pred_p2.dims(), target_p2.dims());
+        log::info!("  pred_p3: {:?}, target_p3: {:?}", pred_p3.dims(), target_p3.dims());
+        log::info!("  pred_p4: {:?}, target_p4: {:?}", pred_p4.dims(), target_p4.dims());
+        
         let loss_p2 = Self::scale_loss(pred_p2, target_p2);
         let loss_p3 = Self::scale_loss(pred_p3, target_p3);
         let loss_p4 = Self::scale_loss(pred_p4, target_p4);
         
-        // Combine losses
-        (loss_p2 + loss_p3 + loss_p4).reshape([1])
+        // Combine losses - simple mean
+        let total_loss = (loss_p2 + loss_p3 + loss_p4) / 3.0;
+        
+        log::info!("  total_loss: {:?}", total_loss.dims());
+        
+        total_loss.reshape([1])
     }
 
     fn scale_loss<B: Backend>(
         predictions: Tensor<B, 4>,
         targets: Tensor<B, 4>,
     ) -> Tensor<B, 1> {
-        let [batch, _, h, w] = predictions.dims();
-        let num_elements = (batch * h * w) as f32;
+        let pred_dims = predictions.dims();
+        let target_dims = targets.dims();
         
-        // Reshape untuk processing
-        let pred_flat = predictions.reshape([batch, usize::MAX]);
-        let target_flat = targets.reshape([batch, usize::MAX]);
+        log::debug!("  scale_loss: pred={:?}, target={:?}", pred_dims, target_dims);
         
-        let pred_size = pred_flat.dims()[1];
+        // ✅ Simple approach: just compute MSE directly
+        // Both should have same shape now
+        if pred_dims != target_dims {
+            log::warn!("    Shape mismatch! Padding/slicing to match...");
+            // If shapes don't match, take minimum and slice
+            let [b, c, h, w] = pred_dims;
+            let [b_t, c_t, h_t, w_t] = target_dims;
+            
+            let min_c = c.min(c_t);
+            let min_h = h.min(h_t);
+            let min_w = w.min(w_t);
+            
+            let pred_slice = predictions.slice([0..b, 0..min_c, 0..min_h, 0..min_w]);
+            let target_slice = targets.slice([0..b_t, 0..min_c, 0..min_h, 0..min_w]);
+            
+            let diff = pred_slice - target_slice;
+            return (diff.clone() * diff).mean().reshape([1]);
+        }
         
-        // Split predictions: [x, y, w, h, conf, class1, class2, ...]
-        let pred_bbox = pred_flat.clone().slice([0..batch, 0..4]);
-        let pred_conf = pred_flat.clone().slice([0..batch, 4..5]);
-        let pred_cls = pred_flat.slice([0..batch, 5..pred_size]);
+        // ✅ MSE loss - both shapes match
+        let diff = predictions - targets;
+        let mse = (diff.clone() * diff).mean();
         
-        let target_size = target_flat.dims()[1];
-        let target_bbox = target_flat.clone().slice([0..batch, 0..4]);
-        let target_conf = target_flat.clone().slice([0..batch, 4..5]);
-        let target_cls = target_flat.slice([0..batch, 5..target_size]);
+        log::debug!("    MSE: {}", mse.to_data());
         
-        // Bounding box loss (IoU loss - simplified to MSE)
-        let bbox_loss = (pred_bbox - target_bbox).powf_scalar(2.0).mean();
-        
-        // Confidence loss (BCE - simplified to MSE)
-        let conf_loss = (pred_conf - target_conf).powf_scalar(2.0).mean();
-        
-        // Classification loss (BCE - simplified to MSE)
-        let cls_loss = (pred_cls - target_cls).powf_scalar(2.0).mean();
-        
-        // Weight the losses
-        let loss = bbox_loss * 0.5 + conf_loss * 1.0 + cls_loss * 0.5;
-        loss.reshape([1])
-    }
-
-    // IoU loss untuk bounding boxes
-    pub fn iou_loss<B: Backend>(
-        pred_boxes: Tensor<B, 2>,
-        target_boxes: Tensor<B, 2>,
-    ) -> Tensor<B, 1> {
-        // pred_boxes: [batch, 4] (x, y, w, h)
-        // Compute IoU and return 1 - IoU
-        
-        let intersection = Self::compute_intersection(&pred_boxes, &target_boxes);
-        let union = Self::compute_union(&pred_boxes, &target_boxes, &intersection);
-        
-        let iou = intersection / (union + 1e-6);
-        let loss: Tensor<B, 1> = 1.0 - iou;
-        
-        loss.reshape([1])
-    }
-
-    fn compute_intersection<B: Backend>(
-        pred: &Tensor<B, 2>,
-        target: &Tensor<B, 2>,
-    ) -> Tensor<B, 1> {
-        // Simplified intersection computation
-        Tensor::<B, 1>::zeros([1], &pred.device())
-    }
-
-    fn compute_union<B: Backend>(
-        pred: &Tensor<B, 2>,
-        target: &Tensor<B, 2>,
-        intersection: &Tensor<B, 1>,
-    ) -> Tensor<B, 1> {
-        // Simplified union computation
-        Tensor::<B, 1>::ones([1], &pred.device())
+        mse.reshape([1])
     }
 }

@@ -1,180 +1,131 @@
-use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints};
 use crate::training::{TrainingState, TrainingMetrics};
+use eframe::egui;
+use egui_plot::{Corner, Legend, Line, Plot, PlotPoints};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 pub struct TrainingVisualizerApp {
     training_state: Arc<Mutex<TrainingState>>,
-    selected_metric: String,
-}
-
-impl Default for TrainingVisualizerApp {
-    fn default() -> Self {
-        Self {
-            training_state: Arc::new(Mutex::new(TrainingState::new())),
-            selected_metric: "train_loss".to_string(),
-        }
-    }
-}
-
-impl eframe::App for TrainingVisualizerApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("🚀 YOLOv8 Training Monitor");
-            
-            self.render_controls(ui);
-            ui.separator();
-            self.render_metrics(ui);
-            ui.separator();
-            self.render_plot(ui);
-        });
-
-        // Auto refresh
-        ctx.request_repaint();
-    }
+    // ✅ Cache data lokal jadi gak perlu lock terus
+    cached_metrics: Vec<TrainingMetrics>,
+    cached_current: Option<TrainingMetrics>,
 }
 
 impl TrainingVisualizerApp {
     pub fn new(training_state: Arc<Mutex<TrainingState>>) -> Self {
         Self {
             training_state,
-            selected_metric: "train_loss".to_string(),
-        }
-    }
-
-    fn render_controls(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            let state = self.training_state.lock().unwrap();
-            
-            if ui.button("▶ Start Training").clicked() {
-                state.start();
-            }
-            
-            if ui.button("⏸ Pause").clicked() {
-                state.pause();
-            }
-            
-            if ui.button("▶ Resume").clicked() {
-                state.resume();
-            }
-            
-            if ui.button("⏹ Stop").clicked() {
-                state.stop();
-            }
-            
-            ui.separator();
-            
-            if state.is_training() {
-                ui.colored_label(egui::Color32::GREEN, "● Training");
-            } else if state.is_paused.load(std::sync::atomic::Ordering::SeqCst) {
-                ui.colored_label(egui::Color32::YELLOW, "● Paused");
-            } else {
-                ui.colored_label(egui::Color32::RED, "● Stopped");
-            }
-        });
-    }
-
-    fn render_metrics(&mut self, ui: &mut egui::Ui) {
-        let state = self.training_state.lock().unwrap();
-        
-        if let Some(metrics) = &state.current_metrics {
-            ui.group(|ui| {
-                ui.vertical(|ui| {
-                    ui.label(format!("📊 Epoch: {}/{}", metrics.epoch, metrics.total_epochs));
-                    
-                    let progress = state.get_progress();
-                    ui.add(
-                        egui::ProgressBar::new(progress)
-                            .show_percentage()
-                            .desired_width(f32::INFINITY),
-                    );
-                    
-                    ui.horizontal(|ui| {
-                        ui.label("Batch Progress:");
-                        ui.label(format!(
-                            "{}/{}",
-                            metrics.batch_processed, metrics.total_batches
-                        ));
-                    });
-                });
-            });
-            
-            ui.group(|ui| {
-                ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        ui.label("📈 Metrics:");
-                        ui.label(format!("Train Loss: {:.6}", metrics.train_loss));
-                        ui.label(format!("Val Loss: {:.6}", metrics.val_loss));
-                        ui.label(format!("Best Val Loss: {:.6}", state.best_val_loss));
-                    });
-                    
-                    ui.separator();
-                    
-                    ui.vertical(|ui| {
-                        ui.label("⚙️ Config:");
-                        ui.label(format!("Learning Rate: {:.6}", metrics.learning_rate));
-                        ui.label(format!("Total Metrics: {}", state.metrics_history.len()));
-                    });
-                });
-            });
-        } else {
-            ui.label("⏳ Waiting for training to start...");
-        }
-    }
-
-    fn render_plot(&mut self, ui: &mut egui::Ui) {
-        let state = self.training_state.lock().unwrap();
-        
-        ui.horizontal(|ui| {
-            ui.label("Select Metric:");
-            ui.selectable_value(&mut self.selected_metric, "train_loss".to_string(), "Train Loss");
-            ui.selectable_value(&mut self.selected_metric, "val_loss".to_string(), "Val Loss");
-        });
-
-        let points = match self.selected_metric.as_str() {
-            "train_loss" => {
-                state.metrics_history
-                    .iter()
-                    .enumerate()
-                    .map(|(i, m)| [i as f64, m.train_loss as f64])
-                    .collect::<Vec<_>>()
-            }
-            "val_loss" => {
-                state.metrics_history
-                    .iter()
-                    .enumerate()
-                    .map(|(i, m)| [i as f64, m.val_loss as f64])
-                    .collect::<Vec<_>>()
-            }
-            _ => vec![],
-        };
-
-        if !points.is_empty() {
-            let line = Line::new(PlotPoints::new(points));
-            Plot::new("training_plot")
-                .legend(Default::default())
-                .show(ui, |plot_ui| {
-                    plot_ui.line(line);
-                });
-        } else {
-            ui.vertical_centered(|ui| {
-                ui.add_space(100.0);
-                ui.heading("No data yet. Start training to see metrics!");
-            });
+            cached_metrics: Vec::new(),
+            cached_current: None,
         }
     }
 }
 
+impl eframe::App for TrainingVisualizerApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+
+        // ✅ CEPAT: Ambil data sekali, langsung lepas lock
+        let (current_metrics, metrics_history, is_running, is_paused) = {
+            let state = self.training_state.lock().unwrap();
+            (
+                state.current_metrics.clone(),
+                state.metrics_history.clone(),
+                state.is_running.load(Ordering::SeqCst),
+                state.is_paused.load(Ordering::SeqCst),
+            )
+        }; // ✅ LOCK LEPAS DI SINI
+
+        // ✅ Update cache (gak perlu lock lagi)
+        if let Some(ref m) = current_metrics {
+            self.cached_current = Some(m.clone());
+        }
+        self.cached_metrics = metrics_history;
+
+        // ===== UI RENDER (TANPA LOCK) =====
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("🔥 YOLOv8 Training Monitor");
+            ui.separator();
+
+            // ===== STATUS BAR =====
+            {
+                ui.horizontal(|ui| {
+                    if let Some(m) = &self.cached_current {
+                        ui.label(format!(
+                            "Epoch {}/{} | Batch {}/{} | Loss {:.5}",
+                            m.epoch, m.total_epochs, m.batch_processed, m.total_batches, m.train_loss
+                        ));
+                    } else {
+                        ui.label("⏳ Waiting for training...");
+                    }
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("⏹ Stop").clicked() {
+                            self.training_state.lock().unwrap().stop();
+                        }
+                        if ui.button("⏸ Pause").clicked() {
+                            self.training_state.lock().unwrap().pause();
+                        }
+                        if ui.button("▶ Resume").clicked() {
+                            self.training_state.lock().unwrap().resume();
+                        }
+                        if ui.button("▶ Start").clicked() {
+                            self.training_state.lock().unwrap().start();
+                        }
+
+                        if is_running && !is_paused {
+                            ui.colored_label(egui::Color32::GREEN, "● Training");
+                        } else if is_paused {
+                            ui.colored_label(egui::Color32::YELLOW, "● Paused");
+                        } else {
+                            ui.colored_label(egui::Color32::RED, "● Stopped");
+                        }
+                    });
+                });
+            }
+
+            ui.separator();
+
+            // ===== LOSS PLOT =====
+            let losses: Vec<f64> = self.cached_metrics
+                .iter()
+                .map(|m| m.train_loss as f64)
+                .collect();
+
+            if !losses.is_empty() {
+                let points: PlotPoints = losses
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &l)| [i as f64, l])
+                    .collect();
+
+                Plot::new("loss_plot")
+                    .legend(Legend::default().position(Corner::RightTop))
+                    .height(300.0)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(Line::new(points).name("Train Loss"));
+                    });
+
+                // ✅ Tampilkan stats
+                ui.horizontal(|ui| {
+                    if let Some(last) = self.cached_metrics.last() {
+                        ui.label(format!("Last epoch train loss: {:.5}", last.train_loss));
+                        ui.label(format!("Last epoch val loss: {:.5}", last.val_loss));
+                    }
+                });
+            } else {
+                ui.label("⏳ Waiting for epoch completion...");
+            }
+        });
+    }
+}
+
 pub fn run_gui(training_state: Arc<Mutex<TrainingState>>) -> Result<(), eframe::Error> {
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1200.0, 800.0]),
-        ..Default::default()
-    };
+    let options = eframe::NativeOptions::default();
 
     eframe::run_native(
-        "YOLOv8 Training Monitor",
+        "YOLOv8 Training Dashboard",
         options,
-        Box::new(|_cc| Box::<TrainingVisualizerApp>::new(TrainingVisualizerApp::new(training_state))),
+        Box::new(|_cc| Box::new(TrainingVisualizerApp::new(training_state))),
     )
 }

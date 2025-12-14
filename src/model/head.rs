@@ -19,8 +19,17 @@ pub struct DetectionHead<B: Backend> {
 
 impl<B: Backend> DetectionHead<B> {
     pub fn new(device: &B::Device, num_classes: usize) -> Self {
-        let num_anchors = 3;
-        let pred_channels = num_anchors * (5 + num_classes); // x,y,w,h,conf + classes
+        // ✅ YOLOv8 is anchor-free: 4 (bbox) + num_classes (no objectness)
+        let pred_channels = 4 + num_classes;
+        
+        // ✅ Validation
+        assert!(num_classes > 0 && num_classes <= 1000, 
+            "num_classes must be between 1 and 1000, got {}", num_classes);
+        
+        log::info!("DetectionHead init:");
+        log::info!("  num_classes = {}", num_classes);
+        log::info!("  pred_channels = 4 + {} = {} (anchor-free YOLOv8)", 
+            num_classes, pred_channels);
         
         Self {
             conv_p2: Conv::<B>::new(device, 128, 128, 3, 1),
@@ -41,14 +50,34 @@ impl<B: Backend> DetectionHead<B> {
         p3: Tensor<B, 4>,
         p4: Tensor<B, 4>,
     ) -> (Tensor<B, 4>, Tensor<B, 4>, Tensor<B, 4>) {
+        log::info!("DetectionHead forward:");
+        
+        let [b, c, h, w] = p2.dims();
+        log::info!("  p2 input: shape=[{}, {}, {}, {}]", b, c, h, w);
         let x2 = self.conv_p2.forward(p2);
+        let [b, c, h, w] = x2.dims();
+        log::info!("  p2 after conv_p2: shape=[{}, {}, {}, {}]", b, c, h, w);
         let pred2 = self.pred_p2.forward(x2);
+        let [b, c, h, w] = pred2.dims();
+        log::info!("  p2 pred output: shape=[{}, {}, {}, {}]", b, c, h, w);
         
+        let [b, c, h, w] = p3.dims();
+        log::info!("  p3 input: shape=[{}, {}, {}, {}]", b, c, h, w);
         let x3 = self.conv_p3.forward(p3);
+        let [b, c, h, w] = x3.dims();
+        log::info!("  p3 after conv_p3: shape=[{}, {}, {}, {}]", b, c, h, w);
         let pred3 = self.pred_p3.forward(x3);
+        let [b, c, h, w] = pred3.dims();
+        log::info!("  p3 pred output: shape=[{}, {}, {}, {}]", b, c, h, w);
         
+        let [b, c, h, w] = p4.dims();
+        log::info!("  p4 input: shape=[{}, {}, {}, {}]", b, c, h, w);
         let x4 = self.conv_p4.forward(p4);
+        let [b, c, h, w] = x4.dims();
+        log::info!("  p4 after conv_p4: shape=[{}, {}, {}, {}]", b, c, h, w);
         let pred4 = self.pred_p4.forward(x4);
+        let [b, c, h, w] = pred4.dims();
+        log::info!("  p4 pred output: shape=[{}, {}, {}, {}]", b, c, h, w);
         
         (pred2, pred3, pred4)
     }
