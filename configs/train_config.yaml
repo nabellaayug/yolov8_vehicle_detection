@@ -1,0 +1,18 @@
+data_yaml: data/Cars Detection/data.yaml
+img_size: 640
+num_classes: 80
+epochs: 100
+batch_size: 16
+learning_rate: 0.01
+weight_decay: 0.0005
+warmup_epochs: 3
+reg_max: 16
+box_loss_weight: 7.5
+cls_loss_weight: 0.5
+dfl_loss_weight: 1.5
+conf_threshold: 0.25
+iou_threshold: 0.45
+patience: 10
+min_delta: 0.001
+save_dir: runs/train
+save_interval: 10

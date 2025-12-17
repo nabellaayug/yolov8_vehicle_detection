@@ -1,10 +1,10 @@
 pub mod model;
+pub mod data;
 pub mod training;
-pub mod dataset;
 pub mod gui;
 
-// Re-export main items
-pub use model::{YOLOv8Nano, Backbone, Neck, DetectionHead, YOLOLoss};
-pub use training::{Trainer, TrainingConfig, TrainingState, TrainingMetrics};
-pub use dataset::{RoadVehicleDataset, DatasetConfig, BatchLoader};
-pub use gui::TrainingVisualizerApp;
+// Re-exports for convenience
+pub use model::{YOLOv8, Backbone, Neck, DetectionHead, Yolov8Loss, Detection, NMS};
+pub use data::{YoloDataset, YoloDataLoader, BoundingBox};
+pub use training::{Trainer, TrainingConfig, EarlyStopping};
+pub use gui::TrainingGui;

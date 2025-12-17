@@ -1,6 +1,7 @@
-path: ../Cars Detection
-train: train/images
-val: valid/images
+path: ./data/Cars Detection
+train: images/train
+test: images/test
+val: images/val
 
 nc: 5
 names: ['Ambulance', 'Bus', 'Car', 'Motorcycle', 'Truck']

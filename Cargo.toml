@@ -2,46 +2,48 @@
 name = "yolov8_detection"
 version = "0.1.0"
 edition = "2021"
-default-run = "yolov8_detection"
+default-run = "train"
+
+[lib]
+name = "yolov8_detection"
+path = "src/lib.rs"
+
+[[bin]]
+name = "train"
+path = "src/bin/train.rs"
+
+[[bin]]
+name = "infer"
+path = "src/bin/infer.rs"
 
 [dependencies]
-burn = { version = "0.19", features = ["ndarray", "autodiff"] }
-ndarray = "0.16"
-ndarray-rand = "0.15"
-ndarray-stats = "0.5"
-rand = "0.8"
-rand_distr = "0.4"
+# Burn 0.19 with CPU backend
+burn = { version = "0.19", features = ["train", "ndarray"] }
+burn-ndarray = "0.19"
+
+# Serialization - PENTING!
 serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
 serde_json = "1.0"
-bincode = "2.0.0-rc.3"
-image = "0.24"
-imageproc = "0.23"
-egui = "0.27"
-eframe = "0.27"
-egui_plot = "0.27"
-tokio = { version = "1", features = ["full"] }
-crossbeam = "0.8"
-crossbeam-channel = "0.5"
-clap = { version = "4.4", features = ["derive"] }
+
+# Image processing
+image = "0.25"
+
+# Utilities - PENTING!
+rand = "0.8"
+indicatif = "0.17"
 anyhow = "1.0"
-thiserror = "1.0"
-log = "0.4"
-env_logger = "0.11"
-walkdir = "2.4"
-uuid = { version = "1.0", features = ["v4"] }
+clap = { version = "4.0", features = ["derive"] }
 
-[dev-dependencies]
-criterion = "0.5"
-
-[[bin]]
-name = "yolov8_detection"
-path = "src\\main.rs"
-
-[[bin]]
-name = "preprocess"
-path = "src\\bin\\preprocess.rs"
+# GUI 
+eframe = "0.28"
+egui = "0.28"
+egui_plot = "0.28"
 
 [profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
+
+[profile.dev]
+opt-level = 1

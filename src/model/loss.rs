@@ -1,67 +1,150 @@
 use burn::prelude::*;
+use burn::tensor::activation::{sigmoid, softmax};
 
-pub struct YOLOLoss;
+pub struct Yolov8Loss {
+    pub num_classes: usize,
+    pub reg_max: usize,
+    pub box_weight: f32,
+    pub cls_weight: f32,
+    pub dfl_weight: f32,
+}
 
-impl YOLOLoss {
-    pub fn compute<B: Backend>(
-        pred_p2: Tensor<B, 4>,
-        pred_p3: Tensor<B, 4>,
-        pred_p4: Tensor<B, 4>,
-        target_p2: Tensor<B, 4>,
-        target_p3: Tensor<B, 4>,
-        target_p4: Tensor<B, 4>,
-    ) -> Tensor<B, 1> {
-        log::info!("YOLOLoss compute:");
-        log::info!("  pred_p2: {:?}, target_p2: {:?}", pred_p2.dims(), target_p2.dims());
-        log::info!("  pred_p3: {:?}, target_p3: {:?}", pred_p3.dims(), target_p3.dims());
-        log::info!("  pred_p4: {:?}, target_p4: {:?}", pred_p4.dims(), target_p4.dims());
-        
-        let loss_p2 = Self::scale_loss(pred_p2, target_p2);
-        let loss_p3 = Self::scale_loss(pred_p3, target_p3);
-        let loss_p4 = Self::scale_loss(pred_p4, target_p4);
-        
-        // Combine losses - simple mean
-        let total_loss = (loss_p2 + loss_p3 + loss_p4) / 3.0;
-        
-        log::info!("  total_loss: {:?}", total_loss.dims());
-        
-        total_loss.reshape([1])
+impl Yolov8Loss {
+    pub fn new(
+        num_classes: usize,
+        reg_max: usize,
+        box_weight: f32,
+        cls_weight: f32,
+        dfl_weight: f32,
+    ) -> Self {
+        Self {
+            num_classes,
+            reg_max,
+            box_weight,
+            cls_weight,
+            dfl_weight,
+        }
     }
 
-    fn scale_loss<B: Backend>(
-        predictions: Tensor<B, 4>,
-        targets: Tensor<B, 4>,
+    /// Compute loss for single scale
+    pub fn compute_single_scale<B: Backend>(
+        &self,
+        pred_reg: &Tensor<B, 4>,
+        pred_cls: &Tensor<B, 4>,
+        target_reg: &Tensor<B, 4>,
+        target_cls: &Tensor<B, 4>,
+        obj_mask: &Tensor<B, 4>,
     ) -> Tensor<B, 1> {
-        let pred_dims = predictions.dims();
-        let target_dims = targets.dims();
-        
-        log::debug!("  scale_loss: pred={:?}, target={:?}", pred_dims, target_dims);
-        
-        // ✅ Simple approach: just compute MSE directly
-        // Both should have same shape now
-        if pred_dims != target_dims {
-            log::warn!("    Shape mismatch! Padding/slicing to match...");
-            // If shapes don't match, take minimum and slice
-            let [b, c, h, w] = pred_dims;
-            let [b_t, c_t, h_t, w_t] = target_dims;
-            
-            let min_c = c.min(c_t);
-            let min_h = h.min(h_t);
-            let min_w = w.min(w_t);
-            
-            let pred_slice = predictions.slice([0..b, 0..min_c, 0..min_h, 0..min_w]);
-            let target_slice = targets.slice([0..b_t, 0..min_c, 0..min_h, 0..min_w]);
-            
-            let diff = pred_slice - target_slice;
-            return (diff.clone() * diff).mean().reshape([1]);
-        }
-        
-        // ✅ MSE loss - both shapes match
-        let diff = predictions - targets;
-        let mse = (diff.clone() * diff).mean();
-        
-        log::debug!("    MSE: {}", mse.to_data());
-        
-        mse.reshape([1])
+        let dfl = self.dfl_loss(pred_reg, target_reg, obj_mask);
+        let cls = self.bce_loss(pred_cls, target_cls, obj_mask);
+
+        (dfl * self.dfl_weight + cls * self.cls_weight).reshape([1])
+    }
+
+    /// Compute multi-scale loss
+    pub fn compute_multi_scale<B: Backend>(
+        &self,
+        // P2 predictions and targets
+        pred_reg_p2: &Tensor<B, 4>,
+        pred_cls_p2: &Tensor<B, 4>,
+        target_reg_p2: &Tensor<B, 4>,
+        target_cls_p2: &Tensor<B, 4>,
+        obj_mask_p2: &Tensor<B, 4>,
+        // P3 predictions and targets
+        pred_reg_p3: &Tensor<B, 4>,
+        pred_cls_p3: &Tensor<B, 4>,
+        target_reg_p3: &Tensor<B, 4>,
+        target_cls_p3: &Tensor<B, 4>,
+        obj_mask_p3: &Tensor<B, 4>,
+        // P4 predictions and targets
+        pred_reg_p4: &Tensor<B, 4>,
+        pred_cls_p4: &Tensor<B, 4>,
+        target_reg_p4: &Tensor<B, 4>,
+        target_cls_p4: &Tensor<B, 4>,
+        obj_mask_p4: &Tensor<B, 4>,
+    ) -> Tensor<B, 1> {
+        let loss_p2 = self.compute_single_scale(
+            pred_reg_p2,
+            pred_cls_p2,
+            target_reg_p2,
+            target_cls_p2,
+            obj_mask_p2,
+        );
+
+        let loss_p3 = self.compute_single_scale(
+            pred_reg_p3,
+            pred_cls_p3,
+            target_reg_p3,
+            target_cls_p3,
+            obj_mask_p3,
+        );
+
+        let loss_p4 = self.compute_single_scale(
+            pred_reg_p4,
+            pred_cls_p4,
+            target_reg_p4,
+            target_cls_p4,
+            obj_mask_p4,
+        );
+
+        (loss_p2 + loss_p3 + loss_p4) / 3.0
+    }
+
+    /// Distribution Focal Loss for bbox regression
+    fn dfl_loss<B: Backend>(
+        &self,
+        pred: &Tensor<B, 4>,
+        target: &Tensor<B, 4>,
+        obj_mask: &Tensor<B, 4>,
+    ) -> Tensor<B, 1> {
+        let bins = self.reg_max + 1;
+        let [b, _, h, w] = pred.dims();
+
+        // Reshape to [B, 4, bins, H, W]
+        let pred = pred.clone().reshape([b, 4, bins, h, w]);
+        let pred = softmax(pred, 2);
+
+        let target = target.clone().reshape([b, 4, bins, h, w]);
+
+        // Expand obj_mask to match shape
+        let obj_mask = obj_mask
+            .clone()
+            .repeat_dim(1, 4 * bins)
+            .reshape([b, 4, bins, h, w]);
+
+        // Cross-entropy loss with mask
+        let loss = -(target * pred.log()) * obj_mask.clone();
+
+        // Normalize by number of objects
+        let num_objects = obj_mask.sum().clamp_min(1.0);
+        loss.sum() / num_objects
+    }
+
+    /// Binary Cross-Entropy loss for classification
+    fn bce_loss<B: Backend>(
+        &self,
+        pred: &Tensor<B, 4>,
+        target: &Tensor<B, 4>,
+        obj_mask: &Tensor<B, 4>,
+    ) -> Tensor<B, 1> {
+        let eps = 1e-7;
+
+        // Apply sigmoid
+        let p = sigmoid(pred.clone()).clamp(eps, 1.0 - eps);
+
+        // Expand obj_mask for all classes
+        let [_, num_classes, _, _] = pred.dims();
+        let obj_mask = obj_mask.clone().repeat_dim(1, num_classes);
+
+        // BCE formula
+        let pos_loss = target.clone() * p.clone().log();
+        let neg_loss = (Tensor::ones_like(target) - target.clone()) * 
+                       (Tensor::ones_like(&p) - p).log();
+
+        let loss = -(pos_loss + neg_loss) * obj_mask.clone();
+
+        // Normalize
+        let num_objects = obj_mask.clone().sum().clamp_min(1.0);
+        loss.sum() / num_objects
     }
 }
