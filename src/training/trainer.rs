@@ -148,12 +148,12 @@ impl<B: AutodiffBackend> Trainer<B> {
             }
 
             println!(
-                "  ⏱️ Epoch time: {:.2}s",
+                "Epoch time: {:.2}s",
                 epoch_start.elapsed().as_secs_f32()
             );
         }
 
-        println!("\n💾 Saving final checkpoint...");
+        println!("\nSaving final checkpoint...");
         if let Err(e) = self.save_checkpoint("final") {
             eprintln!("Failed to save final checkpoint: {}", e);
         }
@@ -288,7 +288,7 @@ impl<B: AutodiffBackend> Trainer<B> {
 
             // Check for NaN/Inf before accumulating
             if loss_value.is_nan() || loss_value.is_infinite() {
-                eprintln!("⚠️ NaN/Inf loss detected at batch {}", batch_idx + 1);
+                eprintln!("NaN/Inf loss detected at batch {}", batch_idx + 1);
                 continue;
             }
 
@@ -303,7 +303,7 @@ impl<B: AutodiffBackend> Trainer<B> {
                 .step(self.config.learning_rate, self.model.clone(), grads);
 
             if (batch_idx + 1) % 10 == 0 {
-                println!("  📊 Batch {}: loss={:.4}", batch_idx + 1, loss_value);
+                println!("Batch {}: loss={:.4}", batch_idx + 1, loss_value);
             }
         }
 

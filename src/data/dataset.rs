@@ -144,7 +144,7 @@ impl YoloDataset {
     pub fn get(&self, idx: usize) -> Result<(DynamicImage, Vec<BoundingBox>)> {
         if idx >= self.samples.len() {
             return Err(anyhow::anyhow!(
-                "❌ Index {} out of bounds. Dataset has {} samples",
+                "Index {} out of bounds. Dataset has {} samples",
                 idx,
                 self.samples.len()
             ));

@@ -85,11 +85,11 @@ impl eframe::App for TrainingGui {
                     
                     //Handle val loss display
                     if last_val.is_finite() {
-                        ui.label(format!("🔴 Val Loss: {:.4}", last_val));
+                        ui.label(format!("Val Loss: {:.4}", last_val));
                     } else if last_val.is_infinite() {
-                        ui.colored_label(egui::Color32::YELLOW, "🔴 Val Loss: inf (no valid batches)");
+                        ui.colored_label(egui::Color32::YELLOW, "Val Loss: inf (no valid batches)");
                     } else {
-                        ui.colored_label(egui::Color32::RED, "🔴 Val Loss: NaN");
+                        ui.colored_label(egui::Color32::RED, "Val Loss: NaN");
                     }
                 });
                 
@@ -99,7 +99,7 @@ impl eframe::App for TrainingGui {
                     if last_val > last_train * 1.2 {
                         ui.colored_label(
                             egui::Color32::RED,
-                            "⚠️ Possible overfitting detected (Val Loss > 1.2x Train Loss)!"
+                            "Possible overfitting detected (Val Loss > 1.2x Train Loss)!"
                         );
                     }
                     
