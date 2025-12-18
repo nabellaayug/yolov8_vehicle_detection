@@ -8,7 +8,6 @@ A high-performance YOLOv8 object detection implementation in Rust using the Burn
 ## 📋 Table of Contents
 
 - [Features](#-features)
-- [Requirements](#-requirements)
 - [Installation](#-installation)
 - [Dataset Preparation](#-dataset-preparation)
 - [Training](#-training)
