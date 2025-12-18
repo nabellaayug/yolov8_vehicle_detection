@@ -4,7 +4,6 @@ A high-performance YOLOv8 object detection implementation in Rust using the Burn
 
 [![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org/)
 [![Burn](https://img.shields.io/badge/burn-0.19-blue.svg)](https://burn.dev/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## 📋 Table of Contents
 
