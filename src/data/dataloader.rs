@@ -83,13 +83,28 @@ impl<B: Backend> Iterator for YoloDataLoader<B> {
                 
                 let rgb_img = img.to_rgb8();
                 
-                for c in 0..3 {
-                    for y in 0..self.dataset.img_size {
-                        for x in 0..self.dataset.img_size {
-                            let pixel = rgb_img.get_pixel(x as u32, y as u32);
-                            let val = pixel[c] as f32 / 255.0;
-                            images_vec.push(val);
-                        }
+                // Convert to CHW format (Channel first)
+                // R channel
+                for y in 0..self.dataset.img_size {
+                    for x in 0..self.dataset.img_size {
+                        let pixel = rgb_img.get_pixel(x as u32, y as u32);
+                        images_vec.push(pixel[0] as f32 / 255.0);
+                    }
+                }
+                
+                // G channel
+                for y in 0..self.dataset.img_size {
+                    for x in 0..self.dataset.img_size {
+                        let pixel = rgb_img.get_pixel(x as u32, y as u32);
+                        images_vec.push(pixel[1] as f32 / 255.0);
+                    }
+                }
+                
+                // B channel
+                for y in 0..self.dataset.img_size {
+                    for x in 0..self.dataset.img_size {
+                        let pixel = rgb_img.get_pixel(x as u32, y as u32);
+                        images_vec.push(pixel[2] as f32 / 255.0);
                     }
                 }
                 
@@ -97,8 +112,14 @@ impl<B: Backend> Iterator for YoloDataLoader<B> {
             }
         }
         
-        let images = Tensor::<B, 4>::from_floats(images_vec.as_slice(), &self.device)
-            .reshape([actual_batch_size, 3, self.dataset.img_size, self.dataset.img_size]);
+        // Langsung buat tensor 4D dengan TensorData
+        let images = Tensor::<B, 4>::from_data(
+            TensorData::new(
+                images_vec,
+                [actual_batch_size, 3, self.dataset.img_size, self.dataset.img_size]
+            ),
+            &self.device
+        );
         
         self.current_idx = end_idx;
         

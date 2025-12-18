@@ -31,8 +31,7 @@ struct Args {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     
-    println!("🔍 YOLOv8 Inference (CPU)");
-    println!("=========================");
+    println!("YOLOv8 Inference (CPU)");
     println!("Image: {}", args.image);
     println!("Weights: {}", args.weights);
     println!("Confidence: {}", args.conf);
@@ -43,31 +42,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     type MyBackend = NdArray;
     let device = NdArrayDevice::default();
     
-    println!("🔧 Creating model...");
+    println!("Creating model...");
     let _model = YOLOv8::<MyBackend>::new(&device, args.classes, 16);
     
-    // TODO: Load weights
-    // _model.load_weights(&args.weights)?;
-    println!("✅ Model created (weights loading not yet implemented)");
+    println!("Model created (weights loading not yet implemented)");
     
-    // TODO: Load and preprocess image
-    println!("📷 Loading image: {}", args.image);
-    // let img_tensor = load_image(&args.image, &device)?;
+    println!(" Loading image: {}", args.image);
     
-    // TODO: Run inference
-    println!("🚀 Running inference...");
-    // let detections = model.predict(img_tensor, args.conf, args.iou);
-    
-    // ✅ FIX #2: Placeholder untuk detections sampai inference di-implement
+    println!(" Running inference...");
+
     let detections: Vec<yolov8_detection::model::nms::Detection> = Vec::new();
     
-    println!("✅ Inference completed");
-    println!("📊 Found {} objects", detections.len());
+    println!("Inference completed");
+    println!("Found {} objects", detections.len());
     
-    // TODO: Visualize results
-    // ✅ FIX #3: Safety check untuk loop
     if detections.is_empty() {
-        println!("⚠️  No detections found (inference not yet implemented)");
+        println!("No detections found (inference not yet implemented)");
     } else {
         for (i, det) in detections.iter().enumerate() {
             println!("  {}. Class: {}, Confidence: {:.2}%", 

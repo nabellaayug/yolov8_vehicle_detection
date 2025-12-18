@@ -32,7 +32,7 @@ impl EarlyStopping {
             
             if self.counter >= self.patience {
                 self.stopped = true;
-                println!("⚠️  Early stopping triggered! No improvement for {} epochs", self.patience);
+                println!("Early stopping triggered! No improvement for {} epochs", self.patience);
                 true
             } else {
                 false

@@ -23,8 +23,6 @@ impl Metrics {
         num_classes: usize,
         iou_threshold: f32,
     ) -> f32 {
-        // TODO: Implement proper mAP calculation
-        // This is a placeholder
         let mut ap_sum = 0.0;
         
         for class_id in 0..num_classes {
@@ -46,10 +44,6 @@ impl Metrics {
         _class_id: usize,
         _iou_threshold: f32,
     ) -> f32 {
-        // TODO: Implement AP calculation per class
-        // 1. Match predictions to ground truths
-        // 2. Calculate precision-recall curve
-        // 3. Calculate area under curve
         0.0
     }
     

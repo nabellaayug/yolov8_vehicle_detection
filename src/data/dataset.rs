@@ -64,7 +64,7 @@ impl YoloDataset {
             "val" => "val",
             _ => {
                 return Err(anyhow::anyhow!(
-                    "❌ Unknown split: {}. Use 'train', 'test', or 'val'",
+                    "Unknown split: {}. Use 'train', 'test', or 'val'",
                     split
                 ))
             }
@@ -76,14 +76,14 @@ impl YoloDataset {
 
         if !img_dir.exists() {
             return Err(anyhow::anyhow!(
-                "❌ Image directory not found: {}",
+                "Image directory not found: {}",
                 img_dir.display()
             ));
         }
 
         if !label_dir.exists() {
             return Err(anyhow::anyhow!(
-                "❌ Label directory not found: {}",
+                "Label directory not found: {}",
                 label_dir.display()
             ));
         }
@@ -106,7 +106,7 @@ impl YoloDataset {
                                 samples.push((img_path, label_path));
                             } else {
                                 eprintln!(
-                                    "⚠️  Warning: Label not found for {}",
+                                    "Warning: Label not found for {}",
                                     img_path.display()
                                 );
                             }
@@ -116,11 +116,11 @@ impl YoloDataset {
             }
         }
 
-        println!("✅ Loaded {} {} samples", samples.len(), split_name);
+        println!("Loaded {} {} samples", samples.len(), split_name);
 
         if samples.is_empty() {
             return Err(anyhow::anyhow!(
-                "❌ No samples found in {}. Check if images and labels exist.",
+                "No samples found in {}. Check if images and labels exist.",
                 img_dir.display()
             ));
         }
@@ -182,7 +182,7 @@ impl YoloDataset {
                     }
                     _ => {
                         eprintln!(
-                            "⚠️  Warning: Invalid label format in {}: {}",
+                            "Warning: Invalid label format in {}: {}",
                             label_path.display(),
                             line
                         );
@@ -201,23 +201,23 @@ impl YoloDataset {
 pub fn reorganize_dataset(dataset_dir: &str) -> Result<()> {
     let base_path = std::path::Path::new(dataset_dir);
     if !base_path.exists() {
-        return Err(anyhow::anyhow!("❌ Path {} tidak ditemukan!", dataset_dir));
+        return Err(anyhow::anyhow!("Path {} tidak ditemukan!", dataset_dir));
     }
 
-    println!("🔄 Reorganizing dataset structure...");
+    println!("Reorganizing dataset structure...");
     println!("From: train/images, train/labels, test/images, val/images");
     println!(
         "To:   images/train, labels/train, images/test, labels/test, images/val, labels/val\n"
     );
 
-    println!("📁 Creating new directory structure...");
+    println!("Creating new directory structure...");
 
     let splits = vec!["train", "test", "val"];
     for split in &splits {
         fs::create_dir_all(base_path.join("images").join(split))?;
         fs::create_dir_all(base_path.join("labels").join(split))?;
     }
-    println!("  ✅ Created images/ and labels/ directories\n");
+    println!("Created images/ and labels/ directories\n");
 
     // Move files for each split
     for split in &splits {
@@ -225,7 +225,7 @@ pub fn reorganize_dataset(dataset_dir: &str) -> Result<()> {
     }
 
     // Create data.yaml
-    println!("📝 Creating data.yaml...");
+    println!("Creating data.yaml...");
     let yaml_content = r#"path: ./data/Cars Detection
 train: images/train
 test: images/test
@@ -237,19 +237,19 @@ names: ['Ambulance', 'Bus', 'Car', 'Motorcycle', 'Truck']
 
     let yaml_path = base_path.join("data.yaml");
     fs::write(&yaml_path, yaml_content)?;
-    println!("  ✅ Saved to {}\n", yaml_path.display());
+    println!("Saved to {}\n", yaml_path.display());
 
     // Clean up old directories
-    println!("🧹 Cleaning up old directory structure...");
+    println!("Cleaning up old directory structure...");
     for split in &splits {
         let old_split_dir = base_path.join(split);
         if old_split_dir.exists() {
             fs::remove_dir_all(&old_split_dir)?;
-            println!("  ✅ Removed old {}/", split);
+            println!("Removed old {}/", split);
         }
     }
 
-    println!("\n✅ Dataset reorganization completed!");
+    println!("\nDataset reorganization completed!");
     println!("\nNew structure:");
     println!("  Cars Detection/");
     println!("  ├── images/");
@@ -266,14 +266,14 @@ names: ['Ambulance', 'Bus', 'Car', 'Motorcycle', 'Truck']
 }
 
 fn reorganize_split(base_path: &std::path::Path, split: &str) -> Result<()> {
-    println!("📋 Organizing {} split...", split);
+    println!("Organizing {} split...", split);
 
     let old_split_dir = base_path.join(split);
     let new_img_dir = base_path.join("images").join(split);
     let new_label_dir = base_path.join("labels").join(split);
 
     if !old_split_dir.exists() {
-        println!("  ⚠️  {} folder tidak ditemukan, skip", split);
+        println!("{} folder tidak ditemukan, skip", split);
         return Ok(());
     }
 
@@ -314,7 +314,7 @@ fn reorganize_split(base_path: &std::path::Path, split: &str) -> Result<()> {
         }
     }
 
-    println!("  ✅ {} images, {} labels moved", img_count, label_count);
+    println!("{} images, {} labels moved", img_count, label_count);
 
     Ok(())
 }

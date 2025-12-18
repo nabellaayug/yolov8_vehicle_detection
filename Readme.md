@@ -1,321 +1,513 @@
-# 🔥 YOLOv8 Nano - Rust Implementation from Scratch
+# 🚗 YOLOv8 Object Detection in Rust
 
-A complete **YOLOv8 Nano object detection model** implemented in Rust using the **Burn deep learning framework**. This project demonstrates building a production-ready computer vision model from architecture definition to training and inference.
+A high-performance YOLOv8 object detection implementation in Rust using the Burn deep learning framework. This project focuses on vehicle detection with 5 classes: Ambulance, Bus, Car, Motorcycle, and Truck.
 
-## 📚 Research & References
+[![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org/)
+[![Burn](https://img.shields.io/badge/burn-0.19-blue.svg)](https://burn.dev/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-### Official Papers & Resources
+## 📋 Table of Contents
 
-1. **YOLOv8 Paper & Architecture**
-   - 📄 [YOLOv8: A Faster and Stronger Real-Time Object Detector](https://arxiv.org/abs/2308.02146)
-   - 🔗 Ultralytics Official: https://github.com/ultralytics/ultralytics
-   - 📖 YOLOv8 Docs: https://docs.ultralytics.com/
+- [Features](#-features)
+- [Project Structure](#-project-structure)
+- [Requirements](#-requirements)
+- [Installation](#-installation)
+- [Dataset Preparation](#-dataset-preparation)
+- [Training](#-training)
+- [Inference](#-inference)
+- [Model Architecture](#-model-architecture)
+- [Configuration](#-configuration)
+- [Troubleshooting](#-troubleshooting)
+- [Performance](#-performance)
+- [Resources](#-resources)
+- [Contributing](#-contributing)
+- [License](#-license)
 
-2. **YOLO Evolution Timeline**
-   - YOLOv1 (2016): https://arxiv.org/abs/1506.02640
-   - YOLOv3 (2018): https://arxiv.org/abs/1804.02767
-   - YOLOv5 (2021): https://github.com/ultralytics/yolov5
-   - YOLOv8 (2023): Latest iteration with improved speed/accuracy
+---
 
-### Deep Learning Framework References
+## ✨ Features
 
-3. **Burn Framework** (Rust Deep Learning)
-   - 🔗 GitHub: https://github.com/burn-rs/burn
-   - 📖 Docs: https://burn.dev/
-   - 🎓 Tutorial: https://github.com/burn-rs/burn/tree/main/examples
+- ✅ **Pure Rust Implementation** - No Python dependencies
+- ✅ **Burn Framework** - Modern deep learning in Rust
+- ✅ **Multi-Scale Detection** - 3 detection heads (P2, P3, P4)
+- ✅ **Real-time Training GUI** - Live loss visualization with egui
+- ✅ **Flexible Backend** - CPU (NdArray) support
+- ✅ **Early Stopping** - Prevent overfitting automatically
+- ✅ **Checkpoint Management** - Save best and periodic checkpoints
+- ✅ **Easy Inference** - Simple CLI for testing on images
+- ✅ **YOLO Format Support** - Standard YOLO dataset format
 
-4. **Related Rust ML Projects**
-   - https://github.com/huggingface/safetensors (Tensor serialization)
-   - https://github.com/ndarray-rs/ndarray (NumPy-like array library)
-   - https://github.com/tch-rs/tch-rs (PyTorch bindings for Rust)
 
-### Neural Network Concepts
+### Software Requirements
+- **Rust:** 1.75 or higher
+  - Install from [rustup.rs](https://rustup.rs/)
+- **Git:** For cloning the repository
 
-5. **Key Architectures Used**
-   - **Backbone**: CSPDarknet (CSP = Cross Stage Partial)
-   - **Neck**: FPN (Feature Pyramid Network)
-   - **Head**: Detection head dengan multi-scale predictions
-   - Papers:
-     - FPN: https://arxiv.org/abs/1612.03144
-     - CSPDarknet: https://arxiv.org/abs/1911.11721
+---
 
-### Training Techniques
+## 🚀 Installation
 
-6. **Loss Functions & Optimization**
-   - IoU Loss: https://arxiv.org/abs/1608.01471
-   - Focal Loss: https://arxiv.org/abs/1708.02002
-   - Mosaic Data Augmentation (YOLOv4): https://arxiv.org/abs/2004.10934
+### 1. Clone the Repository
 
-## 🏗️ Architecture Overview
+```bash
+git clone https://github.com/yourusername/yolov8-rust-detection.git
+cd yolov8-rust-detection
+```
 
-### Model Structure
+### 2. Install Rust Dependencies
+
+```bash
+cargo build --release
+```
+
+This will download and compile all dependencies (~10-15 minutes first time).
+
+### 3. Verify Installation
+
+```bash
+cargo test
+```
+
+All tests should pass ✅
+
+---
+
+## 📦 Dataset Preparation
+
+### Option 1: Use Cars Detection Dataset (Recommended)
+
+1. **Download Dataset**
+   - Download from [Kaggle](https://www.kaggle.com/datasets/abdallahwagih/cars-detection) 
+   - Format: YOLO v8
+
+2. **Extract to Project**
+   ```bash
+   # Extract to data/ folder
+   unzip cars-detection.zip -d data/
+   ```
+
+3. **Verify Structure**
+   ```bash
+   data/Cars Detection/
+   ├── images/
+   │   ├── train/     # Training images (.jpg, .png)
+   │   ├── val/       # Validation images
+   │   └── test/      # Test images
+   ├── labels/
+   │   ├── train/     # Training labels (.txt)
+   │   ├── val/       # Validation labels
+   │   └── test/      # Test labels
+   └── data.yaml      # Dataset config
+   ```
+
+4. **Verify data.yaml**
+   ```yaml
+   # data.yaml
+   train: images/train
+   val: images/val
+   test: images/test
+   
+   nc: 5  # number of classes
+   names: ['Ambulance', 'Bus', 'Car', 'Motorcycle', 'Truck']
+   ```
+
+### Option 2: Use Your Own Dataset
+
+1. **Organize Your Data** in YOLO format:
+   ```
+   your_dataset/
+   ├── images/train/*.jpg
+   ├── images/val/*.jpg
+   ├── labels/train/*.txt
+   └── labels/val/*.txt
+   ```
+
+2. **Label Format** (YOLO format):
+   ```
+   # Each line: class_id center_x center_y width height (normalized 0-1)
+   0 0.5 0.5 0.3 0.4
+   2 0.3 0.6 0.2 0.3
+   ```
+
+3. **Create data.yaml**:
+   ```yaml
+   train: images/train
+   val: images/val
+   nc: 5
+   names: ['class1', 'class2', 'class3', 'class4', 'class5']
+   ```
+
+4. **Update config.rs**:
+   ```rust
+   // src/training/config.rs
+   data_yaml: "data/your_dataset/data.yaml".to_string(),
+   num_classes: 5,  // Your number of classes
+   ```
+
+---
+
+## 🎓 Training
+
+### Quick Start
+
+```bash
+# Start training with default config
+cargo run --release --bin train
+```
+
+This will:
+- ✅ Load dataset from `data/Cars Detection/`
+- ✅ Initialize YOLOv8 model
+- ✅ Train for 10 epochs
+- ✅ Show real-time GUI with loss plots
+- ✅ Save checkpoints to `runs/train/`
+
+### Training Output
 
 ```
-YOLOv8Nano
-├── Backbone (Feature Extractor)
-│   ├── Stem: Conv(3 -> 32, 3x3, stride=1)
-│   ├── Stage1: C2f(32 -> 64)
-│   ├── Stage2: C2f(64 -> 128)
-│   ├── Stage3: C2f(128 -> 256)
-│   └── Stage4: C2f(256 -> 512)
-├── Neck (Feature Aggregation)
-│   ├── Top-down pathway (upsampling)
-│   ├── Bottom-up pathway (downsampling)
-│   └── FPN with lateral connections
-└── Head (Detection)
-    ├── Conv_p2 (128 channels, 80x80)
-    ├── Conv_p3 (256 channels, 40x40)
-    └── Conv_p4 (512 channels, 20x20)
+YOLOv8 Rust Training (CPU)
+Dataset loaded:
+  Train: 500 images
+  Val: 100 images
+
+Epoch [1/10]
+  📊 Batch 10: loss=0.7200
+  📊 Batch 20: loss=0.6950
+🔍 Starting validation with ~10 batches...
+  [Val Batch 1] 3 objects → Losses: p2=0.7100, p3=0.6900, p4=0.7000
+✅ Validation completed: 10 valid batches
+  Train Loss: 0.6700, Val Loss: 0.7100
+  ✅ Validation loss improved! Saving best checkpoint...
+  💾 Saving checkpoint 'best'...
+  ✅ Checkpoint saved
+  ⏱️ Epoch time: 245s
+
+Epoch [2/10]
+  ...
+
+💾 Saving final checkpoint...
+✅ Training completed!
+📁 Checkpoints saved in: runs/train
 ```
+
+### Training GUI
+
+The GUI shows real-time:
+- 📈 **Loss plots** (train & validation)
+- 🔄 **Current epoch progress**
+- ⚡ **Learning rate**
+- ⏱️ **Epoch time**
+- ⚠️ **Overfitting warnings**
+
+![Training GUI Screenshot](docs/training_gui.png)
+
+### Custom Training Configuration
+
+Edit `configs/train_config.yaml`:
+
+```yaml
+# Dataset
+data_yaml: "data/Cars Detection/data.yaml"
+img_size: 640
+num_classes: 5
+
+# Training
+epochs: 50                  # Number of epochs
+batch_size: 8               # Batch size (increase if you have more RAM)
+learning_rate: 0.001        # Learning rate (CRITICAL!)
+weight_decay: 0.0005
+warmup_epochs: 3
+
+# Model
+reg_max: 16
+
+# Loss weights
+box_loss_weight: 7.5
+cls_loss_weight: 0.5
+dfl_loss_weight: 1.5
+
+# Inference
+conf_threshold: 0.25        # Confidence threshold
+iou_threshold: 0.45         # NMS IoU threshold
+
+# Early stopping
+patience: 10                # Stop if no improvement for N epochs
+min_delta: 0.001
+
+# Checkpointing
+save_dir: "runs/train"
+save_interval: 10           # Save every N epochs
+```
+
+### Important Training Notes
+
+⚠️ **Learning Rate is CRITICAL!**
+- Default: `0.001` ✅
+- Too high (e.g., `1.5`): Model explodes 💥
+- Too low (e.g., `0.00001`): Training too slow 🐌
+
+⚠️ **Batch Size**
+- Increase if you have more RAM
+- Decrease if you get OOM errors
+- Default: `1` (safe for 8GB RAM)
+
+⚠️ **Epochs**
+- Start with 10-20 for testing
+- 50-100 for good results
+- Use early stopping to prevent overfitting
+
+---
+
+## 🔮 Inference
+
+### Test on Single Image
+
+```bash
+# Basic usage
+cargo run --release --bin test -- --image "path/to/car.jpg"
+
+# With custom confidence threshold
+cargo run --release --bin test -- --image "test.jpg" --conf 0.15
+
+# Use different checkpoint
+cargo run --release --bin test -- \
+  --image "test.jpg" \
+  --weights "runs/train/epoch_50" \
+  --conf 0.25
+
+# Save detections to file
+cargo run --release --bin test -- --image "test.jpg" --save
+```
+
+### Inference Output
+
+```
+🚗 YOLOv8 Car Detection Inference
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📷 Input: test_car.jpg
+🔧 Weights: runs/train/best
+🎯 Confidence: 0.25
+📊 IoU: 0.45
+
+📋 Loading model config...
+  ✅ Classes: 5
+  ✅ Image Size: 640
+
+🔨 Creating model...
+📦 Loading checkpoint...
+  ✅ Weights loaded successfully!
+
+🖼️  Loading image...
+  ✅ Original size: 1280x720
+
+🔮 Running inference...
+  ✅ Inference completed in 245ms
+
+📊 Post-processing...
+  ✅ Found 15 raw detections
+  ✅ After NMS: 3 detections
+
+🎯 Detected 3 objects:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Car (87.3%)
+   BBox: [234, 145, 456, 389] (x1, y1, x2, y2)
+   Size: 222x244
+
+2. Bus (92.1%)
+   BBox: [678, 123, 987, 567] (x1, y1, x2, y2)
+   Size: 309x444
+
+3. Motorcycle (76.5%)
+   BBox: [123, 456, 234, 678] (x1, y1, x2, y2)
+   Size: 111x222
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💾 Saving output image...
+  ✅ Saved detections to: test_car_detections.txt
+
+✅ Done!
+```
+
+### Batch Processing
+
+Process multiple images:
+
+```bash
+# Windows (PowerShell)
+Get-ChildItem test_images\*.jpg | ForEach-Object {
+    cargo run --release --bin test -- --image $_.FullName --conf 0.25
+}
+
 
 ### Key Components
 
-**C2f Block (Concatenate Fusion)**
-- Inspired by CSPDarknet
-- Two branches: conv + bottleneck modules
-- Concatenated output for richer feature representation
-- File: `src/model/blocks/c2f.rs`
+1. **Backbone (CSPDarknet53)**
+   - Extract features at multiple scales
+   - Cross Stage Partial connections
 
-**Bottleneck Module**
-- Residual connection with hidden dimension reduction
-- Structure: conv(in -> hidden) -> conv(hidden -> out) + residual
-- Improves gradient flow during training
+2. **Neck (FPN/PAN)**
+   - Feature Pyramid Network (top-down)
+   - Path Aggregation Network (bottom-up)
 
-**FPN Neck**
-- Multi-scale feature fusion
-- Top-down: high-level features propagate to low-level
-- Bottom-up: combines all scales for robust detection
-- File: `src/model/neck.rs`
+3. **Detection Head**
+   - Regression: Bounding box coordinates (DFL)
+   - Classification: Object class probabilities
 
-## 📊 Dataset Structure
+4. **Loss Function**
+   - Box Loss: IoU-based (CIoU/DIoU)
+   - Class Loss: Binary Cross Entropy
+   - DFL Loss: Distribution Focal Loss
 
-```
-data/
-├── raw/
-│   ├── images/
-│   │   ├── train/      (878 images)
-│   │   ├── val/        (250 images)
-│   │   ├── test/       (126 images)
-│   └── labels/
-│       ├── train/      (annotations)
-│       ├── val/        (annotations)
-│       ├── test/       (annotations)
-```
+---
 
-**Supported Formats:**
-- Images: JPG, PNG
-- Labels: YOLO format (class_id x_center y_center width height)
+## ⚙️ Configuration
 
-## 🚀 Installation & Setup
+### Training Config (`configs/train_config.yaml`)
 
-### Prerequisites
-- Rust 1.70+ (https://rustup.rs/)
-- Cargo (comes with Rust)
+```yaml
+# Critical parameters
+learning_rate: 0.001      # MOST IMPORTANT! Don't change unless you know what you're doing
+epochs: 50                # More epochs = better (but watch for overfitting)
+batch_size: 8             # Increase if you have more RAM
 
-### Dependencies
-```toml
-[dependencies]
-burn = { version = "0.19", features = ["autodiff", "ndarray"] }
-burn-tch-backend = "0.19"  # Optional: for GPU support
-egui = "0.27"              # GUI
-egui_plot = "0.27"         # Plotting
-eframe = "0.27"            # Window framework
-image = "0.24"             # Image loading
-rand = "0.8"               # Random numbers
-log = "0.4"                # Logging
-env_logger = "0.10"        # Logger initialization
+# Model
+img_size: 640             # Input image size (640 is standard)
+num_classes: 5            # Number of object classes
+reg_max: 16               # DFL bins (default: 16)
+
+# Loss weights (usually don't need to change)
+box_loss_weight: 7.5
+cls_loss_weight: 0.5
+dfl_loss_weight: 1.5
+
+# Early stopping
+patience: 10              # Stop if no improvement for N epochs
+min_delta: 0.001          # Minimum improvement to count
 ```
 
-### Build Instructions
-```bash
-# Clone repository
-git clone <your-repo>
-cd yolov8_detection
+### Model Config (Auto-generated)
 
-# Build project
-cargo build --release
+Located in checkpoint folder `runs/train/best/config.json`:
 
-# Run training
-cargo run --release
-
-# Run with optimizations
-RUST_LOG=info cargo run --release
-```
-
-## Training Pipeline
-
-### Data Loading
-- **Real Images**: Load from `data/raw/images/{train,val,test}/`
-- **Fallback**: Dummy tensor generation if images fail
-- **Preprocessing**: Resize to 224x224, normalize to [0, 1]
-- File: `src/main.rs:load_batch_images()`
-
-### Training Loop
-```rust
-for epoch in 0..num_epochs {
-    for batch in dataset.train_batches {
-        // Forward pass
-        let (p2, p3, p4) = model.forward(images);
-        
-        // Compute loss
-        let loss = YOLOLoss::compute(p2, p3, p4, targets);
-        
-        // Backward pass & optimization
-        trainer.train_step(images, targets);
-        
-        // Update metrics
-        state.update_batch_metrics(metrics);
-    }
-    
-    // Validation
-    val_loss = validate(model, val_dataset);
-    
-    // Early stopping check
-    if val_loss < best_val_loss {
-        save_weights(model);
-    } else {
-        patience_counter += 1;
-        if patience_counter >= patience {
-            break;  // Early stopping
-        }
-    }
+```json
+{
+  "model_type": "YOLOv8",
+  "num_classes": 5,
+  "reg_max": 16,
+  "img_size": 640,
+  "checkpoint_name": "best"
 }
 ```
 
-### Loss Function
-Currently: **MSE Loss (simplified)**
-```rust
-loss = mean((pred - target)^2)
+---
+
+## 🐛 Troubleshooting
+
+### Training Issues
+
+#### 1. NaN Loss / Model Explosion
+
+**Symptom:**
+```
+Epoch [1/10]
+⚠️ NaN/Inf loss detected at batch 2
+Train Loss: 0.0000, Val Loss: inf
 ```
 
-Recommended improvements:
-- IoU Loss for bounding boxes
-- Focal Loss for class imbalance
-- Weighted sum of regression + classification loss
+**Solution:**
+- ✅ **Check learning rate!** Should be `0.001`, NOT `1.5`
+- Edit `configs/train_config.yaml`
+- Delete `runs/train/` and restart training
 
-File: `src/model/loss.rs`
+#### 2. Val Loss Much Higher Than Train Loss
 
-## Key Implementation Details
-
-### 1. Backbone Architecture (`src/model/backbone.rs`)
-- **Input**: 320x320 RGB images
-- **Output**: Multi-scale features (p2, p3, p4)
-  - p2: 52x52x128 (high resolution, small objects)
-  - p3: 26x26x256 (medium scale)
-  - p4: 13x13x512 (low resolution, large objects)
-
-### 2. Neck/FPN (`src/model/neck.rs`)
-- Upsamples low-res features for fusion
-- Downsamples high-res features
-- Concatenates aligned features
-- Maintains channel consistency
-
-### 3. Detection Head (`src/model/heads.rs`)
-- 3 parallel prediction branches
-- Output: (batch, channels=5, height, width)
-  - 5 = [x, y, w, h, confidence]
-  - Expand to (batch, 18, h, w) for 3 anchors + class
-
-### 4. Training State Management (`src/training/state.rs`)
-- Thread-safe metrics sharing
-- Per-batch metric updates (UI responsiveness)
-- Per-epoch history for plotting
-
-### 5. GUI Dashboard (`src/gui/mod.rs`)
-- **4 Tabs**:
-  1. Training Monitor (live loss plot)
-  2. Settings (early stopping config)
-  3. Weights (save/load checkpoints)
-  4. Test (prediction viewer)
-- Real-time metrics visualization
-- Controls: Start/Pause/Resume/Stop
-
-## Configuration
-
-Edit `src/main.rs` to adjust:
-
-```rust
-let num_epochs = 10;           // Training epochs
-let num_batches = 20;          // Batches per epoch
-let batch_size = 4;            // Images per batch
-let num_classes = 1;           // Number of object classes
-let image_size = 224;          // Input size (smaller = faster)
+**Symptom:**
+```
+Train Loss: 0.62, Val Loss: 22.66
 ```
 
-**Performance Tips:**
-- **Smaller image_size** = Faster training (224 vs 416)
-- **Smaller batch_size** = Less memory, but more noisy gradients
-- **CPU vs GPU**: Currently CPU (NdArray). For GPU: use `burn-tch-backend` with CUDA
+**Solution:**
+- ✅ Use latest `trainer.rs` (validation should use same loss as training)
+- ✅ Check if validation dataset has labels
+- ✅ Lower confidence threshold during inference
 
-## 📁 Project Structure
+#### 3. No Objects Detected
 
+**Symptom:**
 ```
-yolov8_detection/
-├── src/
-│   ├── main.rs                 # Training entry point
-│   ├── lib.rs                  # Library exports
-│   ├── model/
-│   │   ├── mod.rs              # Model definition
-│   │   ├── backbone.rs         # Feature extractor
-│   │   ├── neck.rs             # FPN aggregation
-│   │   ├── heads.rs            # Detection heads
-│   │   ├── loss.rs             # Loss computation
-│   │   ├── blocks/
-│   │   │   ├── conv.rs         # Conv + BatchNorm + ReLU
-│   │   │   ├── c2f.rs          # C2f block
-│   │   │   └── mod.rs
-│   │   └── yolo.rs             # Main model
-│   ├── training/
-│   │   ├── mod.rs              # Trainer struct
-│   │   └── state.rs            # TrainingState
-│   ├── dataset/
-│   │   └── mod.rs              # Dataset utilities
-│   ├── gui/
-│   │   └── mod.rs              # egui dashboard
-│   └── lib.rs
-├── Cargo.toml                  # Dependencies
-├── Cargo.lock                  # Lock file
-└── README.md                   # This file
+❌ No objects detected!
 ```
 
-## Learning Resources
+**Solutions:**
+- ✅ Lower confidence: `--conf 0.1`
+- ✅ Train longer (50+ epochs)
+- ✅ Check if model trained properly (train loss < 1.0)
+- ✅ Verify dataset labels are correct
 
-### YouTube Tutorials
-- **YOLO Series Explanation**: 
-  - https://www.youtube.com/watch?v=eTDcoeqB1ZA (Object Detection Basics)
-  - https://www.youtube.com/watch?v=10joRJx39Ns (YOLOv8 Overview)
+#### 4. Out of Memory (OOM)
 
-- **Rust + Burn Framework**:
-  - https://www.youtube.com/watch?v=nZD7VVKrrqE (Burn Tutorial)
+**Symptom:**
+```
+thread 'main' panicked at 'allocation failed'
+```
+
+**Solution:**
+- ✅ Reduce batch size: `batch_size: 1` in config
+- ✅ Reduce image size: `img_size: 416`
+- ✅ Close other applications
+
+### Compilation Issues
+
+#### 1. Dependency Conflicts
+
+```bash
+# Clean and rebuild
+cargo clean
+cargo build --release
+```
+
+#### 2. Version Mismatch
+
+```bash
+# Update Rust
+rustup update
+
+# Update dependencies
+cargo update
+```
+
+## 📚 Resources
+
+### Official Documentation
+
+- **Burn Framework:** [burn.dev](https://burn.dev/)
+- **Rust Book:** [doc.rust-lang.org/book](https://doc.rust-lang.org/book/)
+- **YOLOv8 Paper:** [arXiv:2305.09972](https://arxiv.org/abs/2305.09972)
+
+### Tutorials & Guides
+
+- **Rust ML Intro:** [www.arewelearningyet.com](https://www.arewelearningyet.com/)
+- **YOLO Explained:** [pjreddie.com/darknet/yolo](https://pjreddie.com/darknet/yolo/)
+- **Object Detection Guide:** [paperswithcode.com/task/object-detection](https://paperswithcode.com/task/object-detection)
+
+### Datasets
+
+- **Kaggle Dataset:** [Kaggle](https://www.kaggle.com/datasets/abdallahwagih/cars-detection)
+
+### Community
+
+- **Rust ML Community:** [discord.gg/rust-ml](https://discord.gg/rust-ml)
+- **Burn Discord:** [discord.gg/uPEBbYYDB6](https://discord.gg/uPEBbYYDB6)
+- **Stack Overflow:** Tag `rust` + `machine-learning`
 
 ### Blog Posts & Articles
-- Medium: "Implementing Object Detection with YOLOv8" series
-- Towards Data Science: YOLOv8 architecture breakdown
-- Hugging Face: Model architecture patterns in Rust
 
-## Future Enhancements
+- **Building ML in Rust:** [huggingface.co/blog/rust-ml](https://huggingface.co/blog/rust-ml)
+- **Burn Deep Dive:** [burn.dev/blog](https://burn.dev/blog/)
+- **YOLO Evolution:** [blog.roboflow.com/yolo-evolution](https://blog.roboflow.com/yolo-evolution/)
 
-### Short-term
-- [ ] Implement real IoU loss function
-- [ ] Add data augmentation (Mosaic, mixup)
-- [ ] Model weight serialization (save/load)
-- [ ] GPU backend support (Wgpu, CUDA)
-- [ ] Real prediction inference
+### YouTube Channels
 
-### Medium-term
-- [ ] Anchor-free detection head
-- [ ] Multi-class support
-- [ ] Evaluation metrics (mAP, precision, recall)
-- [ ] Export to ONNX format
-
-### Long-term
-- [ ] Quantization for edge deployment
-- [ ] Knowledge distillation
-- [ ] Neural Architecture Search (NAS)
-- [ ] Multi-GPU distributed training
-
-## Acknowledgments
-
-- **Ultralytics** for YOLOv8 architecture
-- **Burn Framework** team for excellent Rust ML library
-- **egui** community for reactive UI framework
+- **Rust Programming:** [youtube.com/@NoBoilerplate](https://www.youtube.com/@NoBoilerplate)
+- **Computer Vision:** [youtube.com/@FirstPrinciplesofComputerVision](https://www.youtube.com/@FirstPrinciplesofComputerVision)
+- **YOLOv8 Tutorial:** [youtube.com/@ultralytics](https://www.youtube.com/@ultralytics)

@@ -14,10 +14,12 @@ pub struct SPPF<B: Backend> {
 impl<B: Backend> SPPF<B> {
     pub fn new(device: &B::Device, in_channels: usize, out_channels: usize) -> Self {
         let hidden = in_channels / 2;
-        // First conv: in_channels -> out_channels (1x1 kernel)
-        let conv1 = Conv::new(device, in_channels, out_channels, 1, 1);
+        
+        // First conv: in_channels -> hidden (1x1 kernel) - channel reduction
+        let conv1 = Conv::new(device, in_channels, hidden, 1, 1);
 
-        // Second conv: out_channels -> out_channels (1x1 kernel)
+        // Second conv: hidden * 4 -> out_channels (1x1 kernel)
+        // After concatenating 4 tensors of size [B, hidden, H, W], we get [B, hidden*4, H, W]
         let conv2 = Conv::new(device, hidden * 4, out_channels, 1, 1);
 
         let pool = MaxPool2dConfig::new([5, 5])
@@ -29,14 +31,18 @@ impl<B: Backend> SPPF<B> {
     }
 
     pub fn forward(&self, x: Tensor<B, 4>) -> Tensor<B, 4> {
-        // Initial processing
-        let x = self.conv1.forward(x);
+        // Initial processing: reduce channels
+        let x = self.conv1.forward(x);  // [B, hidden, H, W]
 
-        let p1 = self.pool.forward(x.clone());
-        let p2 = self.pool.forward(p1.clone());
-        let p3 = self.pool.forward(p2.clone());
+        // Apply max pooling 3 times to create multi-scale features
+        let p1 = self.pool.forward(x.clone());  // [B, hidden, H, W]
+        let p2 = self.pool.forward(p1.clone()); // [B, hidden, H, W]
+        let p3 = self.pool.forward(p2.clone()); // [B, hidden, H, W]
 
+        // Concatenate: [x, p1, p2, p3] -> [B, hidden*4, H, W]
         let cat = Tensor::cat(vec![x, p1, p2, p3], 1);
+        
+        // Final conv: hidden*4 -> out_channels
         self.conv2.forward(cat)
     }
 }
