@@ -241,8 +241,6 @@ save_interval: 10           # Save every N epochs
 
 ⚠️ **Learning Rate is CRITICAL!**
 - Default: `0.001` ✅
-- Too high (e.g., `1.5`): Model explodes 💥
-- Too low (e.g., `0.00001`): Training too slow 🐌
 
 ⚠️ **Batch Size**
 - Increase if you have more RAM
