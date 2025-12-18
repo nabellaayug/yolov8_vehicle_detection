@@ -74,11 +74,11 @@ impl eframe::App for TrainingGui {
                 ui.horizontal(|ui| {
                     //Handle train loss display
                     if last_train.is_finite() {
-                        ui.label(format!("🔵 Train Loss: {:.4}", last_train));
+                        ui.label(format!("Train Loss: {:.4}", last_train));
                     } else if last_train.is_infinite() {
-                        ui.colored_label(egui::Color32::YELLOW, "🔵 Train Loss: inf");
+                        ui.colored_label(egui::Color32::YELLOW, "Train Loss: inf");
                     } else {
-                        ui.colored_label(egui::Color32::RED, "🔵 Train Loss: NaN");
+                        ui.colored_label(egui::Color32::RED, "Train Loss: NaN");
                     }
                     
                     ui.separator();
@@ -134,7 +134,7 @@ impl eframe::App for TrainingGui {
                             .train_losses
                             .iter()
                             .enumerate()
-                            .filter(|(_, &loss)| loss.is_finite())  // ✅ KEY FIX
+                            .filter(|(_, &loss)| loss.is_finite())  // KEY FIX
                             .map(|(i, &loss)| [i as f64 + 1.0, loss as f64])
                             .collect();
                         
@@ -156,7 +156,7 @@ impl eframe::App for TrainingGui {
                             .val_losses
                             .iter()
                             .enumerate()
-                            .filter(|(_, &loss)| loss.is_finite())  // ✅ KEY FIX
+                            .filter(|(_, &loss)| loss.is_finite())  // KEY FIX
                             .map(|(i, &loss)| [i as f64 + 1.0, loss as f64])
                             .collect();
                         
